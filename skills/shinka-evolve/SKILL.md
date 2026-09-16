@@ -192,7 +192,7 @@ Free inference, so run far longer (100+ generations).
 
 ```bash
 qbraid compute up <profile>          # then, on the instance:
-pip install vllm && bash setup/serve_vllm.sh
+pip install "vllm==0.19.1" && bash setup/serve_vllm.sh
 python run_evolution.py --endpoint local --base-url http://localhost:8000/v1 \
     --model Qwen/Qwen2.5-Coder-14B-Instruct --generations 100
 ```
@@ -201,3 +201,5 @@ Any OpenAI-compatible endpoint works. Use ≥14B — smaller models stall on
 unparseable diffs. **Terminate when done** (`qbraid compute instances terminate
 <label> --yes`); stopped instances still bill storage. Copy `results/` off the
 instance first — on-demand filesystems are deleted on terminate.
+
+**Match the vLLM version to the driver.** Current vLLM links `libcudart.so.13` (CUDA 13) and needs driver >= 580; several qBraid GPU images are older (an A10 measured 570.148.08), where `vllm==0.19.1` (torch 2.10, CUDA 12.8) is the newest that works. Check with `nvidia-smi --query-gpu=driver_version --format=csv,noheader`. `qbraid_remote_gpu.py` resolves this automatically.

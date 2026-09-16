@@ -148,7 +148,7 @@ Launch a GPU instance from the **On-Demand** tab of the
 
 ```bash
 # terminal 1 — serve a model (first run also downloads weights)
-pip install vllm
+pip install "vllm==0.19.1"                    # see the driver note below
 bash setup/serve_vllm.sh                      # or: bash setup/serve_sglang.sh
 
 # terminal 2 — confirm it is up, then evolve
@@ -168,6 +168,29 @@ stall on unparseable diffs rather than fail cleanly.
 
 Any OpenAI-compatible endpoint works here, not just one you host. Shinka
 addresses all of them as `local/<model>@<base-url>`.
+
+### Pick the vLLM version to match the driver
+
+**A plain `pip install vllm` fails on several qBraid GPU images.** vLLM ships a
+compiled extension linked against a specific CUDA runtime, and the images do not
+all carry the same NVIDIA driver — an A10 measured `570.148.08` (CUDA 12.8),
+while an L4 was older still. Current vLLM links `libcudart.so.13` (CUDA 13),
+which needs driver **≥ 580**, so on those images it dies at import with either
+*"The NVIDIA driver on your system is too old"* or
+*"ImportError: libcudart.so.13: cannot open shared object file"*.
+
+| vLLM | torch | CUDA runtime | needs driver |
+|---|---|---|---|
+| ≥ 0.20 | 2.11+ | 13 | ≥ 580 |
+| 0.17 – 0.19 | 2.10.0 | 12.8 | ≥ 570 |
+| 0.14 – 0.16 | 2.9.1 | 12.8 | ≥ 570 |
+
+Check with `nvidia-smi --query-gpu=driver_version --format=csv,noheader` and
+install accordingly. Pointing pip at a `cu128` torch index does **not** help: it
+changes which torch resolves while leaving vLLM's own binary on CUDA 13, which
+fails more confusingly.
+
+`qbraid_remote_gpu.py` (Quickstart C) does this automatically.
 
 ---
 
@@ -194,6 +217,14 @@ with RemoteGPUEndpoint(profile="gpu-l40s", model="Qwen/Qwen2.5-Coder-14B-Instruc
 ```
 
 See [`notebooks/03_remote_gpu.ipynb`](notebooks/03_remote_gpu.ipynb).
+
+The vLLM version is chosen from the instance's driver automatically, so this
+path works across images with different drivers. Verified on `gpu-a10`
+(driver 570.148.08): the module installed `vllm==0.19.1`, served
+`Qwen2.5-Coder-7B-Instruct`, tunnelled it back, ran the search and terminated
+the instance. With a 7B model only 3 of 10 candidates scored — which is the
+under-14B diff-protocol failure `docs/CHOOSING_A_MODEL.md` describes, not a
+problem with the endpoint. Use a 14B or larger for real runs.
 
 ### How the GPU is stopped from outliving you
 

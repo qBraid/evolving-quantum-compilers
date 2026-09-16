@@ -49,20 +49,31 @@ from typing import Optional
 
 from qbraid_core.services.compute.client import ComputeClient
 
-# vLLM bundles a pinned torch, and a recent torch needs a recent NVIDIA driver.
-# qBraid's GPU images do NOT all carry the same driver -- an A10 measured
-# 570.148.08 (CUDA 12.8) while an L4 was old enough that current vllm refused to
-# start at all ("The NVIDIA driver on your system is too old"). So rather than
-# trusting the default PyPI wheel, we read the driver and install a matching
-# CUDA build of torch from PyTorch's own index.
+# vLLM ships a compiled extension linked against a specific CUDA runtime, and a
+# CUDA runtime needs a driver new enough to support it. qBraid's GPU images do
+# NOT all carry the same driver: an A10 measured 570.148.08 (CUDA 12.8), while an
+# L4 was older still. Current vllm wheels link libcudart.so.13 (CUDA 13), which
+# needs driver >= 580, so on those images stock `pip install vllm` dies with
+# either "The NVIDIA driver on your system is too old" or
+# "ImportError: libcudart.so.13: cannot open shared object file".
 #
-# vllm 0.26.0 pins torch==2.11.0, which has cu126/cu128/cu129/cu130 builds --
-# the widest driver coverage available. vllm >= 0.27 pins torch 2.13, which
-# needs a newer driver than several qBraid images have.
-DEFAULT_VLLM_SPEC = "vllm==0.26.0"
+# Pointing pip at a cu128 torch index does NOT fix this -- it changes which torch
+# is resolved while leaving vllm's own binary built for CUDA 13, which is a worse
+# failure. The version of vllm is the thing that has to match the driver:
+#
+#   vllm >= 0.20   torch 2.11+   CUDA 13    driver >= 580
+#   vllm 0.17-0.19 torch 2.10.0  CUDA 12.8  driver >= 570
+#   vllm 0.14-0.16 torch 2.9.1   CUDA 12.8  driver >= 570
+#
+# "auto" resolves this from the driver at launch. Override with --vllm-spec.
+DEFAULT_VLLM_SPEC = "auto"
 
-# Minimum driver for each CUDA runtime, newest first.
-DRIVER_TO_CUDA_TAG = ((580, "cu130"), (570, "cu128"), (560, "cu126"), (0, "cu126"))
+# (minimum driver major, vllm pip spec), newest first.
+DRIVER_TO_VLLM = (
+    (580, "vllm"),
+    (570, "vllm==0.19.1"),
+    (0, "vllm==0.19.1"),
+)
 
 DEFAULT_PROFILE = "gpu-l40s"
 DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-14B-Instruct"
@@ -77,6 +88,8 @@ FATAL_LOG_MARKERS = (
     "No module named",
     "Traceback (most recent call last)",
     "driver on your system is too old",
+    "libcudart.so",
+    "cannot open shared object file",
     "CUDA out of memory",
     "torch.OutOfMemoryError",
     "does not appear to have a file named",
@@ -212,13 +225,11 @@ class RemoteGPUEndpoint:
         gpu = self._ssh("nvidia-smi --query-gpu=name,memory.total --format=csv,noheader")
         _log(f"gpu: {gpu.stdout.strip() or 'unknown'}")
 
-    def _cuda_tag(self) -> str:
-        """Pick a PyTorch CUDA build that this instance's driver can actually run.
+    def _resolve_vllm_spec(self) -> str:
+        """Pick a vllm release whose CUDA runtime this driver can load."""
+        if self.vllm_spec != "auto":
+            return self.vllm_spec
 
-        Installing the default PyPI torch is what produces "The NVIDIA driver on
-        your system is too old" -- the wheel is built for a newer CUDA than the
-        image's driver supports.
-        """
         result = self._ssh(
             "nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1",
             timeout=60,
@@ -227,13 +238,15 @@ class RemoteGPUEndpoint:
         try:
             major = int(raw.split(".")[0])
         except (ValueError, IndexError):
-            _log(f"could not parse driver version {raw!r}; assuming cu126")
-            return "cu126"
-        for minimum, tag in DRIVER_TO_CUDA_TAG:
+            _log(f"could not parse driver version {raw!r}; assuming CUDA 12.8")
+            return "vllm==0.19.1"
+        for minimum, spec in DRIVER_TO_VLLM:
             if major >= minimum:
-                _log(f"driver {raw} -> {tag}")
-                return tag
-        return "cu126"
+                _log(f"driver {raw} -> {spec}")
+                if major < 570:
+                    _log("WARNING: driver is older than any vllm we know works here")
+                return spec
+        return "vllm==0.19.1"
 
     def _ensure_vllm(self) -> str:
         """Return the path of a remote interpreter that can ``import vllm``.
@@ -257,16 +270,14 @@ class RemoteGPUEndpoint:
             _log(f"vllm already present at {interpreter}")
             return interpreter
 
-        cuda_tag = self._cuda_tag()
-        index = f"https://download.pytorch.org/whl/{cuda_tag}"
+        spec = self._resolve_vllm_spec()
 
         venv = "$HOME/vllm-env"
-        _log(f"building a venv and installing {self.vllm_spec} ({cuda_tag}) ...")
+        _log(f"building a venv and installing {spec} ...")
         build = self._ssh(
-            f"set -e; python3 -m venv {venv} >/dev/null 2>&1 || true; "
+            f"set -e; rm -rf {venv}; python3 -m venv {venv}; "
             f"{venv}/bin/python -m pip install --upgrade pip >/dev/null 2>&1; "
-            f"{venv}/bin/python -m pip install {shlex.quote(self.vllm_spec)} "
-            f"--extra-index-url {index}",
+            f"{venv}/bin/python -m pip install {shlex.quote(spec)}",
             timeout=3600,
         )
         if build.returncode != 0:
@@ -429,6 +440,10 @@ def main() -> int:
     parser.add_argument("--results-dir", default="results/remote_gpu")
     parser.add_argument("--max-session-minutes", type=int, default=120)
     parser.add_argument(
+        "--local-port", type=int, default=LOCAL_PORT,
+        help="Local end of the tunnel. Change it to run two GPUs at once.",
+    )
+    parser.add_argument(
         "--vllm-spec", default=DEFAULT_VLLM_SPEC,
         help="pip spec for vllm, e.g. 'vllm==0.8.5.post1' when the image's "
              "NVIDIA driver is older than the latest wheel expects.",
@@ -447,6 +462,7 @@ def main() -> int:
         profile=args.profile,
         model=args.model,
         max_session_minutes=args.max_session_minutes,
+        local_port=args.local_port,
         keep_alive=args.keep_alive,
         vllm_spec=args.vllm_spec,
     )
