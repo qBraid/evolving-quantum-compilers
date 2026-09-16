@@ -169,7 +169,7 @@ def launch_agents(alias: str, count: int) -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", default="gpu-h100-2x")
-    parser.add_argument("--model", default="Qwen/Qwen2.5-Coder-14B-Instruct")
+    parser.add_argument("--model", default="Qwen/Qwen3.5-9B")
     parser.add_argument("--generations", type=int, default=40)
     parser.add_argument("--agents", type=int, default=2)
     parser.add_argument("--max-session-minutes", type=int, default=150)

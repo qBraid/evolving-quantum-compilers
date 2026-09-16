@@ -2,7 +2,7 @@
 # Serve a model on this instance's GPU(s) with SGLang, OpenAI-compatible.
 #
 #   bash setup/serve_sglang.sh
-#   MODEL=Qwen/Qwen2.5-Coder-32B-Instruct bash setup/serve_sglang.sh
+#   MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct bash setup/serve_sglang.sh
 #   PORT=8001 API_KEY=secret bash setup/serve_sglang.sh
 #
 # vLLM or SGLang?
@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-MODEL="${MODEL:-Qwen/Qwen2.5-Coder-14B-Instruct}"
+MODEL="${MODEL:-Qwen/Qwen3.5-9B}"
 SERVED_NAME="${SERVED_NAME:-$MODEL}"
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"

@@ -2,7 +2,7 @@
 # Serve a model on this instance's GPU(s) with vLLM, OpenAI-compatible.
 #
 #   bash setup/serve_vllm.sh                      # defaults below
-#   MODEL=Qwen/Qwen2.5-Coder-32B-Instruct bash setup/serve_vllm.sh
+#   MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct bash setup/serve_vllm.sh
 #   PORT=8001 API_KEY=secret bash setup/serve_vllm.sh
 #
 # Leave this running and drive it from a second terminal. The server prints
@@ -11,18 +11,21 @@
 #
 # Model size vs GPU memory, roughly, for bf16 weights plus KV cache:
 #
-#     24 GB  (RTX 4090, L4)            7B comfortably, 14B quantised
-#     48 GB  (L40S, RTX 6000 Ada)      14B comfortably, 32B quantised
-#     80 GB  (A100 80GB, H100, H200)   32B comfortably
+#     24 GB  (RTX 4090, L4)            Qwen/Qwen3.5-9B
+#     48 GB  (L40S, RTX 6000 Ada)      Qwen/Qwen3.8-27B-FP8   (FP8 needs Hopper+)
+#     80 GB  (A100 80GB, H100, H200)   Qwen/Qwen3-Coder-30B-A3B-Instruct
 #
 # Size up rather than down if you can. ShinkaEvolve asks the model to emit
 # exact SEARCH/REPLACE diff blocks against the seed program, and small models
-# are unreliable at that -- below about 14B a large fraction of proposals fail
-# to parse and the run stalls without ever erroring out. See docs/CHOOSING_A_MODEL.md.
+# are unreliable at that -- at the very small end a large fraction of proposals
+# fail to parse and the run stalls without ever erroring out. Prefer the largest
+# mixture-of-experts model that fits: MoE follows diffs like its total parameter
+# count while decoding like its (much smaller) active count.
+# See docs/CHOOSING_A_MODEL.md.
 
 set -euo pipefail
 
-MODEL="${MODEL:-Qwen/Qwen2.5-Coder-14B-Instruct}"
+MODEL="${MODEL:-Qwen/Qwen3.5-9B}"
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"

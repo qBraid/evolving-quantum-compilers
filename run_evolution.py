@@ -8,7 +8,7 @@
     # a model you are serving yourself on this instance's GPU
     python run_evolution.py --endpoint local \
         --base-url http://localhost:8000/v1 \
-        --model Qwen/Qwen2.5-Coder-14B-Instruct
+        --model Qwen/Qwen3.5-9B
 
 Use this rather than `shinka_run` for the gateway path. It registers live
 gateway pricing with Shinka first, and without that step `max_api_costs` is

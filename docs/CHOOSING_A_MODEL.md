@@ -33,26 +33,56 @@ check how many candidates actually applied before you tune anything else.
 
 | Parameters | Behaviour on this task |
 |---|---|
-| under ~7B | Mostly unusable. Diffs rarely apply; most generations are wasted. |
-| ~14B | Workable. Expect a meaningful fraction of failed patches; raise the share of `full` rewrites. |
-| ~32B | Comfortable. Diffs apply reliably and proposals are substantive. |
+| under ~4B | Mostly unusable. Diffs rarely apply; most generations are wasted. |
+| ~9B | Workable. Expect a meaningful fraction of failed patches; raise the share of `full` rewrites. |
+| ~27-30B | Comfortable. Diffs apply reliably and proposals are substantive. |
 | gateway models | Best quality, but metered per token. |
 
 Prefer a **code- or instruction-tuned** model. Base/completion models are poor
 at the SEARCH/REPLACE protocol regardless of size.
+
+Generation matters as much as size: these thresholds track roughly one size
+class *down* per model generation, so a current 9B behaves about like the 14B
+this guidance was first written against.
+
+## Mixture-of-experts changes the trade
+
+The advice above is about *quality*, and it used to cost you speed: a bigger
+model follows the diff protocol better and decodes proportionally slower, which
+matters because Shinka is latency-bound — it waits on one proposal at a time per
+parallel job.
+
+MoE models break that coupling. `Qwen/Qwen3-Coder-30B-A3B-Instruct` has 30B
+total parameters but activates only ~3B per token, so it follows diffs like a
+30B and decodes closer to a 3B. You pay for it in VRAM, not in time: the whole
+30B must be resident even though a fraction is used per token.
+
+So the rule is no longer "take the biggest model that fits". It is:
+
+- **take the largest MoE that fits in VRAM**, because active parameters, not
+  total, set your throughput; and
+- fall back to a dense model only when no MoE fits — on 24 GB, that means
+  `Qwen/Qwen3.5-9B`.
+
+This is also why quantisation is usually worth it here (see below): it buys
+total parameters, which is what the diff protocol cares about.
 
 ## Fitting the model to the GPU
 
 bf16 weights need roughly `2 bytes x parameters`, plus KV cache and activation
 headroom. A useful rule is *parameters in billions × 2.5 GB*.
 
-| qBraid GPU | VRAM | Comfortable at bf16 | With 4-bit quantisation |
+| qBraid GPU | VRAM | Comfortable at bf16 | Suggested model |
 |---|---|---|---|
-| RTX 4090, L4 | 24 GB | 7B | 14B |
-| L40S, RTX 6000 Ada | 48 GB | 14B | 32B |
-| A100 80GB, H100, H200 | 80 GB | 32B | 70B |
-| GH200 | 96 GB+ | 32B comfortably | 70B+ |
-| multi-GPU (2×, 4×, 8×) | — | scales with `--tensor-parallel-size` | — |
+| RTX 4090, L4 | 24 GB | ~9B | `Qwen/Qwen3.5-9B` |
+| L40S, RTX 6000 Ada | 48 GB | ~18B | `Qwen/Qwen3.8-27B-FP8` (FP8 needs Hopper+) |
+| A100 80GB, H100, H200 | 80 GB | ~30B | `Qwen/Qwen3-Coder-30B-A3B-Instruct` |
+| GH200 | 96 GB+ | ~35B | `Qwen/Qwen3-Coder-30B-A3B-Instruct` |
+| multi-GPU (2×, 4×, 8×) | — | scales with `--tensor-parallel-size` | `Qwen/Qwen3.8-27B` |
+
+All of the above are Apache-2.0. Note that `Qwen3.8-Flash-Next` is **not** a
+small model despite the name — it is 180B and licensed `other`; the
+self-hostable member of the 3.8 line is `Qwen3.8-27B`.
 
 The serve scripts set tensor parallelism automatically from the number of
 visible GPUs, rounding down to a power of two (tensor parallel size must divide

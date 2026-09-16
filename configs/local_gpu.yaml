@@ -3,7 +3,7 @@
 #   bash setup/serve_vllm.sh                       # terminal 1
 #   run_evolution.py --endpoint local \
 #       --base-url http://localhost:8000/v1 \
-#       --model Qwen/Qwen2.5-Coder-14B-Instruct    # terminal 2
+#       --model Qwen/Qwen3.5-9B    # terminal 2
 #
 # Inference is free here -- you are already paying for the GPU by the minute --
 # so the budget is wall-clock and generations rather than dollars. That changes
@@ -62,7 +62,7 @@ evo_config:
 
   # Overwritten by run_evolution.py from --model/--base-url.
   llm_models:
-    - "local/Qwen/Qwen2.5-Coder-14B-Instruct@http://localhost:8000/v1"
+    - "local/Qwen/Qwen3.5-9B@http://localhost:8000/v1"
 
   llm_dynamic_selection: ucb1
   llm_dynamic_selection_kwargs:

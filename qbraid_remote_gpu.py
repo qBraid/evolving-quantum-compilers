@@ -8,7 +8,7 @@ Ctrl-C.
 
     from qbraid_remote_gpu import RemoteGPUEndpoint
 
-    with RemoteGPUEndpoint(profile="gpu-l40s", model="Qwen/Qwen2.5-Coder-14B-Instruct") as gpu:
+    with RemoteGPUEndpoint(profile="gpu-l40s", model="Qwen/Qwen3.5-9B") as gpu:
         subprocess.run([
             "python", "run_evolution.py", "--endpoint", "local",
             "--base-url", gpu.base_url, "--model", gpu.model,
@@ -87,7 +87,7 @@ DRIVER_TO_VLLM = (
 )
 
 DEFAULT_PROFILE = "gpu-l40s"
-DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-14B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen3.5-9B"
 REMOTE_PORT = 8000
 LOCAL_PORT = 8000
 
