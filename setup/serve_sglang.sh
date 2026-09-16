@@ -26,6 +26,10 @@ CONTEXT_LENGTH="${CONTEXT_LENGTH:-32768}"
 MEM_FRACTION_STATIC="${MEM_FRACTION_STATIC:-0.85}"
 REASONING_PARSER="${REASONING_PARSER:-}"
 API_KEY="${API_KEY:-}"
+# SGLang captures CUDA graphs on startup too, and qBraid's GPU containers do not
+# permit capture -- the same cudaErrorNotPermitted that kills vLLM. Disable it by
+# default; set DISABLE_CUDA_GRAPH=0 on a host that does permit capture.
+DISABLE_CUDA_GRAPH="${DISABLE_CUDA_GRAPH:-1}"
 
 if ! command -v nvidia-smi >/dev/null 2>&1; then
   echo "error: no nvidia-smi on PATH. This needs to run on a GPU instance." >&2
@@ -49,6 +53,7 @@ fi
 echo "model              : $MODEL  (served as '$SERVED_NAME')"
 echo "GPUs visible       : $GPU_COUNT (tp-size=$TP)"
 echo "context length     : $CONTEXT_LENGTH"
+echo "cuda graphs        : ${DISABLE_CUDA_GRAPH:+disabled}${DISABLE_CUDA_GRAPH:-enabled}"
 echo "listening on       : http://${HOST}:${PORT}/v1"
 echo "auth               : ${API_KEY:+Bearer <API_KEY>}${API_KEY:-none}"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | sed 's/^/                     /'
@@ -63,6 +68,7 @@ ARGS=(
   --context-length "$CONTEXT_LENGTH"
   --mem-fraction-static "$MEM_FRACTION_STATIC"
 )
+[ "$DISABLE_CUDA_GRAPH" != "0" ] && ARGS+=(--disable-cuda-graph)
 [ -n "$REASONING_PARSER" ] && ARGS+=(--reasoning-parser "$REASONING_PARSER")
 [ -n "$API_KEY" ] && ARGS+=(--api-key "$API_KEY")
 

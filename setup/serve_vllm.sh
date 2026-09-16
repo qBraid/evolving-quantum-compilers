@@ -28,6 +28,14 @@ HOST="${HOST:-0.0.0.0}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 API_KEY="${API_KEY:-}"
+# CUDA graph capture is not permitted inside qBraid's GPU containers. vLLM dies
+# during capture with
+#     torch.AcceleratorError: CUDA error: operation not permitted
+# from vllm/compilation/cuda_graph.py, and the server never comes up at all.
+# --enforce-eager skips capture: it costs some decode throughput and is the
+# difference between a server and no server. Set ENFORCE_EAGER=0 on a host that
+# does permit capture.
+ENFORCE_EAGER="${ENFORCE_EAGER:-1}"
 
 if ! command -v nvidia-smi >/dev/null 2>&1; then
   echo "error: no nvidia-smi on PATH. This needs to run on a GPU instance." >&2
@@ -53,6 +61,7 @@ fi
 echo "model              : $MODEL"
 echo "GPUs visible       : $GPU_COUNT (tensor-parallel-size=$TP)"
 echo "context length     : $MAX_MODEL_LEN"
+echo "cuda graphs        : ${ENFORCE_EAGER:+disabled (--enforce-eager)}${ENFORCE_EAGER:-enabled}"
 echo "listening on       : http://${HOST}:${PORT}/v1"
 echo "auth               : ${API_KEY:+Bearer <API_KEY>}${API_KEY:-none}"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | sed 's/^/                     /'
@@ -66,6 +75,7 @@ ARGS=(
   --max-model-len "$MAX_MODEL_LEN"
   --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
 )
+[ "$ENFORCE_EAGER" != "0" ] && ARGS+=(--enforce-eager)
 # Without a key the endpoint is open to anything that can reach the port. That
 # is fine inside a single-user qBraid instance and not fine if you expose it.
 [ -n "$API_KEY" ] && ARGS+=(--api-key "$API_KEY")
