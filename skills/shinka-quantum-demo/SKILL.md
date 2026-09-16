@@ -1,6 +1,6 @@
 ---
 name: shinka-quantum-demo
-description: Run the qBraid compiler-evolution project end to end — LLM-driven evolutionary search that invents a better qubit-layout heuristic than the one it starts with, scored by the two-qubit gate count Qiskit emits after routing. Use when the user wants to try ShinkaEvolve on qBraid, run the qubit-layout/qubit-mapping evolution demo, evolve a transpiler pass, or see AlphaEvolve-style program search applied to a quantum compiler. Triggers on "run the compiler evolution demo", "evolve a qubit layout", "try ShinkaEvolve", "beat SabreLayout".
+description: Run the qBraid compiler-evolution project: LLM-driven evolutionary search that invents a better qubit-layout heuristic, scored by the two-qubit gate count Qiskit emits after routing. Use for "try ShinkaEvolve", "evolve a qubit layout", "beat SabreLayout".
 ---
 
 # Evolving a quantum compiler pass on qBraid

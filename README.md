@@ -171,6 +171,49 @@ addresses all of them as `local/<model>@<base-url>`.
 
 ---
 
+## Quickstart C — search here, model on a GPU over there
+
+Quickstart B assumes you are already sitting on a GPU instance. This one does not:
+the orchestrator stays on whatever instance you are using — a free CPU one is
+fine — and the model runs on an on-demand GPU that is launched, served, tunnelled
+back to `localhost`, and **terminated for you**.
+
+```bash
+python qbraid_remote_gpu.py --profile gpu-l40s \
+    --model Qwen/Qwen2.5-Coder-14B-Instruct --generations 40
+```
+
+Or from Python, where the same guarantee is a context manager:
+
+```python
+from qbraid_remote_gpu import RemoteGPUEndpoint
+
+with RemoteGPUEndpoint(profile="gpu-l40s", model="Qwen/Qwen2.5-Coder-14B-Instruct") as gpu:
+    ...  # gpu.base_url is a local URL
+# the instance is gone here, including if the block raised
+```
+
+See [`notebooks/03_remote_gpu.ipynb`](notebooks/03_remote_gpu.ipynb).
+
+### How the GPU is stopped from outliving you
+
+A forgotten GPU is the most expensive mistake available here, so there are four
+independent stops rather than one:
+
+| stop | runs on | covers |
+|---|---|---|
+| `max_session_minutes` | qBraid server | this process being killed, the kernel dying, you closing the tab |
+| `auto_stop_idle_minutes` | qBraid server | the run finishing but nothing using the GPU |
+| `__exit__` | your machine | normal completion, and any exception |
+| `atexit` + orphan sweep | your machine | failure *between* provisioning and receiving an instance id |
+
+Only the server-side pair survive your machine going away, which is exactly the
+case where you would otherwise keep paying. The orphan sweep exists because that
+gap is real: the first version of this module leaked a running instance by
+raising after provisioning but before it had an id to terminate.
+
+Terminate, not stop — a stopped instance still bills for its disk.
+
 ## Watching a run
 
 ```bash
@@ -209,12 +252,14 @@ setup/
 notebooks/
   01_gateway_quickstart.ipynb
   02_local_gpu_quickstart.ipynb
+  03_remote_gpu.ipynb
 skills/
   shinka-quantum-demo/  agent skill: run this project end to end
   shinka-evolve/        agent skill: point the search at your own code
 run_evolution.py        launcher for both paths
 qbraid_pricing.py       makes max_api_costs actually bind on the gateway
 qbraid_gateway_compat.py  strips request params the gateway rejects
+qbraid_remote_gpu.py      launches/serves/tears down a GPU worker
 ```
 
 ## Trying your own ideas

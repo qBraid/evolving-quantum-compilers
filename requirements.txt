@@ -14,6 +14,11 @@ shinka-evolve>=0.0.7
 # Config files.
 pyyaml>=6.0
 
+# qBraid compute lifecycle, for the cross-machine path in qbraid_remote_gpu.py.
+# Present on a Lab instance's system Python, but not inside a qBraid env, so the
+# environment needs it explicitly.
+qbraid-core>=0.6.5
+
 # Notebooks. Drop these two if the environment is CLI-only.
 jupyterlab>=4.0
 matplotlib>=3.8

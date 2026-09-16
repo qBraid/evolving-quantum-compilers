@@ -1,6 +1,6 @@
 ---
 name: shinka-evolve
-description: Point LLM-driven evolutionary search (ShinkaEvolve) at the user's own code on qBraid — design the evolvable task, write a trustworthy evaluator, launch against the qBraid AI Gateway or a self-hosted GPU model, monitor spend, and harvest the winner. Use when the user wants to optimize/discover an algorithm, heuristic, ansatz, schedule, loss function or hyperparameters by evolutionary search rather than by hand. Triggers on "use ShinkaEvolve on my code", "evolve this function", "AlphaEvolve-style search", "find me a better heuristic for X", "set up an evolution run".
+description: Point LLM-driven evolutionary search (ShinkaEvolve) at the user's own code on qBraid - designing the evolvable task and a trustworthy evaluator, launching against the AI Gateway or a self-hosted GPU, capping spend, and harvesting the winner. Use for "evolve this function", "find a better heuristic for X", "AlphaEvolve-style search".
 ---
 
 # ShinkaEvolve on qBraid — bring your own problem
