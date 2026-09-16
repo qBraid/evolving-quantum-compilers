@@ -4,6 +4,7 @@ task_decoder/baselines_decoder.json
 
 # Run outputs
 results/
+*.log
 *.sqlite
 *.pkl
 
