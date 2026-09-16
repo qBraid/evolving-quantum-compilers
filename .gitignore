@@ -1,0 +1,12 @@
+# Auto-generated: recomputed per Qiskit version, never commit
+task/baselines.json
+
+# Run outputs
+results/
+*.sqlite
+*.pkl
+
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/

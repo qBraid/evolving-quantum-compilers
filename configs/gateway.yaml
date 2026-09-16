@@ -1,0 +1,105 @@
+# ShinkaEvolve config -- qBraid AI Gateway path.
+#
+# Every LLM call here costs money (quota first, then credits). The settings
+# below are deliberately conservative; read the two cost notes before raising
+# anything.
+#
+#   run_evolution.py --endpoint gateway --config configs/gateway.yaml
+#
+# COST NOTE 1 -- the budget only binds because run_evolution.py calls
+# qbraid_pricing.register_gateway_pricing() first. Shinka prices unknown models
+# at zero, and gateway models reached over `local/...` are unknown to it by
+# default. Launch through run_evolution.py, not `shinka_run`, or max_api_costs
+# will be ignored.
+#
+# COST NOTE 2 -- max_api_costs is checked between generations, not mid-flight.
+# With max_proposal_jobs > 1 you can overshoot by roughly one generation's
+# worth of calls. Set the budget to what you are willing to lose, not to what
+# you expect to spend.
+
+# Parallel proposal/evaluation jobs. The evaluator is ~2s of CPU, so the LLM is
+# always the bottleneck; these mostly control how many requests are in flight.
+max_evaluation_jobs: 2
+max_proposal_jobs: 2
+max_db_workers: 2
+
+db_config:
+  # One island. Islands are for long runs with diversity pressure; a short
+  # demo run does not have the generations to make them pay off.
+  num_islands: 1
+  archive_size: 30
+  elite_selection_ratio: 0.3
+  num_archive_inspirations: 2
+  num_top_k_inspirations: 1
+  migration_interval: 10
+  migration_rate: 0.1
+  island_elitism: true
+  enforce_island_separation: true
+  parent_selection_strategy: weighted
+  parent_selection_lambda: 10
+  archive_selection_strategy: "crowding"
+  island_selection_strategy: equal
+  archive_criteria:
+    combined_score: 1.0
+    # Mild pressure toward shorter programs, to discourage the model from
+    # bolting on ever more special cases.
+    loc: -0.3
+
+evo_config:
+  patch_types: [diff, full, cross]
+  patch_type_probs: [0.6, 0.3, 0.1]
+
+  num_generations: 30
+
+  # Hard USD ceiling for the whole run. ~$2 is enough to see the score move on
+  # this task with a cheap model. Raise deliberately.
+  max_api_costs: 2.0
+
+  max_patch_resamples: 3
+  max_patch_attempts: 2
+  # Must be >= 1. This is the outer proposal loop, not a novelty filter --
+  # novelty checking is separately gated on novelty_llm_models (null below).
+  # Setting it to 0 makes every proposal fail instantly.
+  max_novelty_attempts: 1
+
+  job_type: local
+  language: python
+
+  # Addressed through Shinka's `local/` provider so the gateway base URL can be
+  # supplied verbatim. run_evolution.py rewrites this from --model/--base-url,
+  # so the value here is only the default.
+  llm_models:
+    - "local/gpt-5.4-mini@https://api-v2.qbraid.com/api/v1/ai"
+
+  # Required. Model selection runs before any query; null here makes every
+  # proposal fail with a null patch_type. With one model, UCB just always
+  # picks it -- list several models and it will learn which earns its cost.
+  llm_dynamic_selection: ucb1
+  llm_dynamic_selection_kwargs:
+    exploration_coef: 1.0
+    cost_aware_coef: 0.5
+
+  llm_kwargs:
+    temperatures: [0.0, 0.5, 1.0]
+    # Must be a real effort level. The default "" is rejected by reasoning
+    # models. Ignored by models that do not reason.
+    reasoning_efforts: ["medium"]
+    # Ceiling per response. Generous, because a truncated diff is an outright
+    # wasted call -- the real spend cap is max_api_costs.
+    max_tokens: 16384
+
+  # All three of these would issue extra billable calls, and the gateway serves
+  # no embedding model. Off for the demo.
+  meta_rec_interval: null
+  meta_llm_models: null
+  embedding_model: null
+  novelty_llm_models: null
+  evolve_prompts: false
+
+  # Feed the evaluator's per-instance breakdown back to the model. This is the
+  # single highest-value setting in the file -- without it the model sees only
+  # a scalar and has to guess which instance it hurt.
+  use_text_feedback: true
+
+  init_program_path: task/initial.py
+  results_dir: results/gateway

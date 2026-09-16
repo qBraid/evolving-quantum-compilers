@@ -1,0 +1,19 @@
+# Minimal dependency set for the qBraid environment.
+#
+# Qiskit's transpiler changes between minor releases, and this task scores
+# candidates by counting gates the transpiler emits. Different Qiskit versions
+# therefore give different absolute scores. That is handled -- the evaluator
+# fingerprints its cached baselines with the Qiskit version and recomputes when
+# it changes, so scores are always internally consistent -- but pin the minor
+# version in the published environment so numbers are comparable between users.
+qiskit>=2.4,<2.6
+
+# The evolutionary search engine.
+shinka-evolve>=0.0.7
+
+# Config files.
+pyyaml>=6.0
+
+# Notebooks. Drop these two if the environment is CLI-only.
+jupyterlab>=4.0
+matplotlib>=3.8
