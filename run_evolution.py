@@ -96,6 +96,12 @@ def main() -> int:
         help="gateway = qBraid AI Gateway (metered); local = your own server.",
     )
     parser.add_argument("--config", help="YAML config. Defaults by endpoint.")
+    parser.add_argument(
+        "--sys-msg-file",
+        help="Markdown file stating the problem to the model. Defaults to the "
+             "qubit-layout task; point it at another task's description to "
+             "evolve something else.",
+    )
     parser.add_argument("--model", help="Model name as the endpoint reports it.")
     parser.add_argument("--base-url", help="OpenAI-compatible base URL ending in /v1.")
     parser.add_argument("--api-key", help="Defaults to $QBRAID_API_KEY / $LOCAL_OPENAI_API_KEY.")
@@ -161,7 +167,14 @@ def main() -> int:
         evo["results_dir"] = args.results_dir
     if args.budget is not None:
         evo["max_api_costs"] = args.budget
-    evo["task_sys_msg"] = TASK_SYS_MSG
+    if args.sys_msg_file:
+        sys_msg_path = Path(args.sys_msg_file)
+        if not sys_msg_path.is_absolute():
+            sys_msg_path = HERE / sys_msg_path
+        evo["task_sys_msg"] = sys_msg_path.read_text()
+        print(f"Task description: {sys_msg_path}\n")
+    else:
+        evo["task_sys_msg"] = TASK_SYS_MSG
     evo["init_program_path"] = str(HERE / evo["init_program_path"])
 
     # ---- make the gateway accept Shinka's calls at all --------------------

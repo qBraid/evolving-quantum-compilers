@@ -1,5 +1,6 @@
 # Auto-generated: recomputed per Qiskit version, never commit
 task/baselines.json
+task_decoder/baselines_decoder.json
 
 # Run outputs
 results/

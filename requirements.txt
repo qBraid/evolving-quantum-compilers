@@ -19,6 +19,13 @@ pyyaml>=6.0
 # environment needs it explicitly.
 qbraid-core>=0.6.5
 
+# The decoder task (task_decoder/): Stim samples the surface-code circuits,
+# PyMatching is the MWPM baseline, BeliefMatching is the reference decoder the
+# search is asked to reach.
+stim>=1.16.0
+pymatching>=2.4.0
+beliefmatching>=0.2.0
+
 # Notebooks. Drop these two if the environment is CLI-only.
 jupyterlab>=4.0
 matplotlib>=3.8
