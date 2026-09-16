@@ -137,6 +137,7 @@ class RemoteGPUEndpoint:
         self,
         profile: str = DEFAULT_PROFILE,
         model: str = DEFAULT_MODEL,
+        provision_timeout: float = 540.0,
         local_port: int = LOCAL_PORT,
         max_session_minutes: int = 120,
         auto_stop_idle_minutes: int = 20,
@@ -146,8 +147,14 @@ class RemoteGPUEndpoint:
         tensor_parallel: int = 1,
         enforce_eager: bool = True,
     ) -> None:
-        self.profile = profile
+        # One profile, or several in preference order ("a,b,c" or a list).
+        self.profiles = (
+            [p.strip() for p in profile.split(",") if p.strip()]
+            if isinstance(profile, str) else list(profile)
+        )
+        self.profile = self.profiles[0]
         self.model = model
+        self.provision_timeout = provision_timeout
         self.local_port = local_port
         self.max_session_minutes = max_session_minutes
         self.auto_stop_idle_minutes = auto_stop_idle_minutes
@@ -210,30 +217,55 @@ class RemoteGPUEndpoint:
         except Exception:  # noqa: BLE001 - never block a launch on this
             self._pre_existing = set()
 
-        _log(f"launching {self.profile} ...")
-        self._provisioned = True
-        instance = self.client.provision_bma_instance(self.profile)
-        self.instance_id = _instance_id(instance)
-        if self.instance_id is None:
-            raise RuntimeError(
-                "provisioned an instance but could not read its id; "
-                "teardown will sweep for it"
+        # Capacity here is genuinely volatile: a profile reporting "High"
+        # availability can still sit in `provisioning` past any sane timeout,
+        # and the same profile that failed can succeed ten minutes later. So
+        # `profile` may be several profiles in preference order, and we move on
+        # rather than fail the whole run on the first one that will not start.
+        last_error: Optional[BaseException] = None
+        for index, profile in enumerate(self.profiles):
+            remaining = self.profiles[index + 1:]
+            _log(f"launching {profile} ...")
+            self._provisioned = True
+            instance = self.client.provision_bma_instance(profile)
+            self.instance_id = _instance_id(instance)
+            if self.instance_id is None:
+                raise RuntimeError(
+                    "provisioned an instance but could not read its id; "
+                    "teardown will sweep for it"
+                )
+            atexit.register(self._terminate_by_id, self.instance_id)
+            _log(f"instance {self.instance_id}")
+
+            # Before anything else: a ceiling that outlives this process.
+            self.client.update_bma_cutoff(
+                self.instance_id,
+                auto_stop_idle_minutes=self.auto_stop_idle_minutes,
+                max_session_minutes=self.max_session_minutes,
             )
-        atexit.register(self._terminate_by_id, self.instance_id)
-        _log(f"instance {self.instance_id}")
+            _log(
+                f"guardrails set: hard stop {self.max_session_minutes} min, "
+                f"idle stop {self.auto_stop_idle_minutes} min"
+            )
 
-        # Before anything else: a server-side ceiling that outlives this process.
-        self.client.update_bma_cutoff(
-            self.instance_id,
-            auto_stop_idle_minutes=self.auto_stop_idle_minutes,
-            max_session_minutes=self.max_session_minutes,
-        )
-        _log(
-            f"guardrails set: hard stop {self.max_session_minutes} min, "
-            f"idle stop {self.auto_stop_idle_minutes} min"
-        )
+            try:
+                self.client.wait_for_bma_instance(
+                    self.instance_id, timeout=self.provision_timeout
+                )
+                self.profile = profile
+                break
+            except Exception as exc:  # noqa: BLE001 - capacity, not a bug
+                last_error = exc
+                _log(f"{profile} did not start: {str(exc)[:140]}")
+                with contextlib.suppress(Exception):
+                    self.client.terminate_bma_instance(self.instance_id)
+                self.instance_id = None
+                if not remaining:
+                    raise
+                _log(f"falling back to {remaining[0]}")
+        else:  # pragma: no cover - the loop always breaks or raises
+            raise RuntimeError(f"no profile could be provisioned: {last_error}")
 
-        self.client.wait_for_bma_instance(self.instance_id, timeout=900)
         self.client.configure_ssh_for_instance(self.instance_id)
         self.alias = self.client.bma_ssh_alias(self.instance_id)
         _log(f"ssh alias {self.alias}")
@@ -449,7 +481,7 @@ class RemoteGPUEndpoint:
             identifier = _instance_id(instance)
             if not identifier or identifier in self._pre_existing:
                 continue
-            if getattr(instance, "profile_slug", None) != self.profile:
+            if getattr(instance, "profile_slug", None) not in self.profiles:
                 continue
             _log(f"terminating orphan {identifier}")
             with contextlib.suppress(Exception):
@@ -458,7 +490,15 @@ class RemoteGPUEndpoint:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", default=DEFAULT_PROFILE)
+    parser.add_argument(
+        "--profile", default=DEFAULT_PROFILE,
+        help="GPU profile, or several comma-separated in preference order. "
+             "Capacity is volatile, so a fallback list is usually worth giving.",
+    )
+    parser.add_argument(
+        "--provision-timeout", type=float, default=540.0,
+        help="Seconds to wait for one profile before trying the next.",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--generations", type=int, default=40)
     parser.add_argument("--results-dir", default="results/remote_gpu")
@@ -496,6 +536,7 @@ def main() -> int:
         profile=args.profile,
         model=args.model,
         max_session_minutes=args.max_session_minutes,
+        provision_timeout=args.provision_timeout,
         local_port=args.local_port,
         keep_alive=args.keep_alive,
         tensor_parallel=args.tensor_parallel,
