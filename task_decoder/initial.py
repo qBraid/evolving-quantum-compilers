@@ -30,21 +30,29 @@ SCORING
     MWPM; higher is better. The score is the mean over instances.
 
     Plain MWPM is the baseline. Belief-matching (belief propagation used to
-    reweight the matching graph per shot) reaches about 1.55x on this panel, so
-    that much headroom is known to exist. Reaching it requires using
-    the syndrome, not just the static DEM weights: the DEM weights are already
-    the correct independent-error log-likelihoods, so any purely static
-    reweighting will not help.
+    reweight the matching graph per shot) reaches about 1.5x on this panel --
+    measured 1.52x on surface-d5-p005 and 1.48x on surface-d5-p008 -- so that
+    much headroom is known to exist. Reaching it requires using the syndrome,
+    not just the static DEM weights: the DEM weights are already the correct
+    independent-error log-likelihoods, so any purely static reweighting will
+    not help.
+
+    Belief-matching itself is far too slow to use here: it takes minutes per
+    instance, well past the time limit. Getting near its accuracy cheaply is
+    the actual problem.
 
 HARD RULES (violating any of these scores the candidate as incorrect)
     - Return the right shape and dtype, values in {0, 1}.
     - Be deterministic. The evaluator calls you twice on identical inputs and
       rejects the candidate if the answers differ. Seed any randomness.
     - Do not import the evaluator or the benchmark module, touch the filesystem
-      or the network, or attempt to recover the observables.
-    - Stay inside the time limit. The whole panel must decode in a few minutes (the limit is 600s, and full belief-matching uses ~320s of it);
-      a per-shot Python loop over 20000 shots is usually too slow unless it is
-      doing very little.
+      or the network, or attempt to recover the observables. You run in a
+      subprocess that cannot import them, and a score implausibly far above
+      plain MWPM is rejected rather than accepted.
+    - Stay inside the time limit: 240s for the whole panel. That is a lot --
+      plain MWPM does all three instances in about 0.2s -- but a per-shot
+      Python loop over 20000 shots will blow through it. Vectorise, or batch
+      the shots you treat specially.
 """
 
 from __future__ import annotations
@@ -63,9 +71,10 @@ def decode_batch(detectors: np.ndarray, ctx) -> np.ndarray:
 
     The theory is wrong in this form. The DEM weights are already the correct
     independent-error log-likelihoods, so scaling them all by one constant
-    changes nothing about which matching is minimal -- it only wastes time, and
-    the syndrome-weight threshold ends up mislabelling ordinary shots. This
-    seed therefore scores slightly BELOW plain MWPM.
+    changes nothing about which matching is minimal -- the softened graph
+    returns exactly the same matching as the original. This seed therefore
+    scores exactly 1.0000x: identical to plain MWPM, with extra work done for
+    nothing.
 
     What actually pays is using each individual syndrome to decide which edges
     are more likely than the static model says.

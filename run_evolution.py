@@ -117,7 +117,10 @@ def main() -> int:
     parser.add_argument(
         "--eval-timeout",
         default="00:05:00",
-        help="Per-candidate wall clock limit (HH:MM:SS). Default 00:05:00.",
+        help="Per-candidate wall clock limit (HH:MM:SS). Default 00:05:00. "
+             "Must stay above the evaluator's own limit (task_decoder sets "
+             "TIME_LIMIT_SECONDS=240) or the harness SIGKILLs the evaluator "
+             "before it can write feedback, and the model sees a bare zero.",
     )
     parser.add_argument(
         "--yes", action="store_true", help="Skip the confirmation prompt."
