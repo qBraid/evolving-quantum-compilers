@@ -96,8 +96,51 @@ def ssh_stream(alias: str, command: str, timeout: int = 7200) -> int:
     return process.wait()
 
 
+def agents_ready(alias: str) -> bool:
+    """Ask the GPU box whether it can actually host an agent, before we try.
+
+    A freshly provisioned instance is not guaranteed to have the agent provider
+    authenticated. Without this the failure shows up as a launch that appears to
+    succeed and then does nothing, which is much harder to read than an upfront
+    "not ready".
+    """
+    probe = subprocess.run(
+        ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", alias,
+         "qbraid agents readiness --tool claude --approval auto --verify-auth --json"],
+        capture_output=True, text=True, timeout=180,
+    )
+    if probe.returncode == 0:
+        _log("agent destination is ready")
+        return True
+
+    # The usual reason a fresh instance is not ready is that it has no agent
+    # credentials: readiness reports credentialTransfer=false, so nothing is
+    # copied there from here. Routing the provider through the qBraid AI gateway
+    # uses the instance's own access token and needs no secret to travel.
+    _log("destination not ready; routing its agent through the qBraid AI gateway ...")
+    subprocess.run(
+        ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", alias,
+         "qbraid ai connect claude"],
+        capture_output=True, text=True, timeout=300,
+    )
+    probe = subprocess.run(
+        ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", alias,
+         "qbraid agents readiness --tool claude --approval auto --verify-auth --json"],
+        capture_output=True, text=True, timeout=180,
+    )
+    if probe.returncode == 0:
+        _log("agent destination is ready (via the gateway)")
+        return True
+    detail = (probe.stdout or probe.stderr).strip().splitlines()
+    _log(f"agent destination NOT ready: {detail[-1][:220] if detail else 'no detail'}")
+    return False
+
+
 def launch_agents(alias: str, count: int) -> list:
     """Start exploration agents on the GPU box itself."""
+    if not agents_ready(alias):
+        _log("skipping agents; the search continues without them")
+        return []
     launched = []
     for name, brief in AGENT_BRIEFS[:count]:
         _log(f"launching agent {name} on {alias}")

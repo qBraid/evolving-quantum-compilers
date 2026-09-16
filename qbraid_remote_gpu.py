@@ -80,6 +80,17 @@ DEFAULT_MODEL = "Qwen/Qwen2.5-Coder-14B-Instruct"
 REMOTE_PORT = 8000
 LOCAL_PORT = 8000
 
+# Tensor parallelism defaults to 1 ON PURPOSE. Setting it to the GPU count looks
+# like free speed and is not: with TP > 1 vLLM shards the model across workers
+# that talk over /dev/shm, and the shared-memory segment on these instances is
+# too small for it. The symptom is not an error -- the server logs
+# "shm_broadcast.py: No available shared memory" forever and never becomes
+# ready, which is indistinguishable from a slow model load.
+#
+# A 14B model at bf16 needs ~28GB and fits on one 80GB H100 with room to spare,
+# so TP is only worth raising for a model that genuinely does not fit on a
+# single card -- and then the shared-memory limit has to be dealt with first.
+
 # Substrings that mean the server is never coming up. Checked against the tail of
 # vllm.log so a dead server aborts in ~30s rather than burning the full timeout.
 FATAL_LOG_MARKERS = (
@@ -124,6 +135,7 @@ class RemoteGPUEndpoint:
         serve_timeout: float = 2400.0,
         keep_alive: bool = False,
         vllm_spec: str = DEFAULT_VLLM_SPEC,
+        tensor_parallel: int = 1,
     ) -> None:
         self.profile = profile
         self.model = model
@@ -133,6 +145,7 @@ class RemoteGPUEndpoint:
         self.serve_timeout = serve_timeout
         self.keep_alive = keep_alive
         self.vllm_spec = vllm_spec
+        self.tensor_parallel = tensor_parallel
 
         self.client = ComputeClient()
         self.instance_id: Optional[str] = None
@@ -299,7 +312,7 @@ class RemoteGPUEndpoint:
             f"rm -f /tmp/vllm.log /tmp/vllm.pid; "
             f"nohup {interpreter} -m vllm.entrypoints.openai.api_server "
             f"--model {shlex.quote(self.model)} --port {REMOTE_PORT} "
-            f"--tensor-parallel-size $(nvidia-smi -L | wc -l) "
+            f"--tensor-parallel-size {self.tensor_parallel} "
             f"> /tmp/vllm.log 2>&1 & echo $! > /tmp/vllm.pid; cat /tmp/vllm.pid"
         )
         started = self._ssh(remote_cmd, timeout=180)
@@ -440,6 +453,11 @@ def main() -> int:
     parser.add_argument("--results-dir", default="results/remote_gpu")
     parser.add_argument("--max-session-minutes", type=int, default=120)
     parser.add_argument(
+        "--tensor-parallel", type=int, default=1,
+        help="GPUs to shard the model across. Leave at 1 unless the model does "
+             "not fit on one card; TP>1 needs more /dev/shm than these images have.",
+    )
+    parser.add_argument(
         "--local-port", type=int, default=LOCAL_PORT,
         help="Local end of the tunnel. Change it to run two GPUs at once.",
     )
@@ -464,6 +482,7 @@ def main() -> int:
         max_session_minutes=args.max_session_minutes,
         local_port=args.local_port,
         keep_alive=args.keep_alive,
+        tensor_parallel=args.tensor_parallel,
         vllm_spec=args.vllm_spec,
     )
 
