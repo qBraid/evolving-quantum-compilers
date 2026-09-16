@@ -97,10 +97,16 @@ def main() -> int:
     )
     parser.add_argument("--config", help="YAML config. Defaults by endpoint.")
     parser.add_argument(
+        "--task-dir",
+        help="Directory holding initial.py, evaluate.py and "
+             "problem_description.md. Setting this switches ALL THREE together, "
+             "which is the point: evolving one task's seed while scoring it with "
+             "another task's evaluator fails every candidate, and the failure "
+             "looks like a bad model rather than a misconfiguration.",
+    )
+    parser.add_argument(
         "--sys-msg-file",
-        help="Markdown file stating the problem to the model. Defaults to the "
-             "qubit-layout task; point it at another task's description to "
-             "evolve something else.",
+        help="Override just the problem description. Usually --task-dir instead.",
     )
     parser.add_argument("--model", help="Model name as the endpoint reports it.")
     parser.add_argument("--base-url", help="OpenAI-compatible base URL ending in /v1.")
@@ -167,15 +173,33 @@ def main() -> int:
         evo["results_dir"] = args.results_dir
     if args.budget is not None:
         evo["max_api_costs"] = args.budget
-    if args.sys_msg_file:
-        sys_msg_path = Path(args.sys_msg_file)
-        if not sys_msg_path.is_absolute():
-            sys_msg_path = HERE / sys_msg_path
-        evo["task_sys_msg"] = sys_msg_path.read_text()
-        print(f"Task description: {sys_msg_path}\n")
+    task_dir = Path(args.task_dir) if args.task_dir else None
+    if task_dir is not None and not task_dir.is_absolute():
+        task_dir = HERE / task_dir
+
+    if task_dir is not None:
+        missing = [
+            name for name in ("initial.py", "evaluate.py", "problem_description.md")
+            if not (task_dir / name).exists()
+        ]
+        if missing:
+            parser.error(f"--task-dir {task_dir} is missing: {', '.join(missing)}")
+        evo["init_program_path"] = str(task_dir / "initial.py")
+        eval_program_path = task_dir / "evaluate.py"
+        evo["task_sys_msg"] = (task_dir / "problem_description.md").read_text()
+        print(f"Task: {task_dir.name} (seed, evaluator and description)\n")
     else:
-        evo["task_sys_msg"] = TASK_SYS_MSG
-    evo["init_program_path"] = str(HERE / evo["init_program_path"])
+        eval_program_path = HERE / "task" / "evaluate.py"
+        if args.sys_msg_file:
+            sys_msg_path = Path(args.sys_msg_file)
+            if not sys_msg_path.is_absolute():
+                sys_msg_path = HERE / sys_msg_path
+            evo["task_sys_msg"] = sys_msg_path.read_text()
+            print(f"Task description: {sys_msg_path}\n")
+        else:
+            evo["task_sys_msg"] = TASK_SYS_MSG
+    if not Path(evo["init_program_path"]).is_absolute():
+        evo["init_program_path"] = str(HERE / evo["init_program_path"])
 
     # ---- make the gateway accept Shinka's calls at all --------------------
     # Shinka's local-OpenAI provider hardcodes n=1, which the gateway rejects
@@ -235,7 +259,7 @@ def main() -> int:
         # as its working directory, which is also how `import benchmarks`
         # inside evaluate.py resolves.
         job_config=LocalJobConfig(
-            eval_program_path=str(HERE / "task" / "evaluate.py"),
+            eval_program_path=str(eval_program_path),
             time=args.eval_timeout,
         ),
         db_config=DatabaseConfig(**config["db_config"]),

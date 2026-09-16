@@ -242,7 +242,7 @@ def main() -> int:
         ):
             with contextlib.suppress(Exception):
                 subprocess.run(
-                    ["scp", "-q", "-o", "StrictHostKeyChecking=no", "-r",
+                    ["scp", "-q", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "-r",
                      f"{alias}:{remote}", str(destination)],
                     timeout=900, check=False,
                 )
