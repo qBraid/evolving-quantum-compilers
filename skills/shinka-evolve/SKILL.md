@@ -218,7 +218,13 @@ nvidia-smi --query-gpu=driver_version --format=csv,noheader
 | driver | install |
 |---|---|
 | ≥ 580 | `pip install vllm` (CUDA 13) |
-| 570–579 | `pip install "vllm==0.19.1"` (torch 2.10, CUDA 12.8) |
+| 525–579 | `pip install "vllm==0.19.1"` (torch 2.10, CUDA 12.x) |
+
+The boundary is the CUDA **major** version: minor version compatibility lets a
+12.8 runtime run on any driver supporting 12.0, so one CUDA 12.x pin covers the
+whole range. **Do not assume a newer GPU has a newer driver** — measured on
+qBraid, `gpu-h100-sxm` was 550.163.01 while `gpu-a10` was 570.148.08. The newest
+card had the oldest driver.
 
 Symptoms of a mismatch: `The NVIDIA driver on your system is too old`, or
 `ImportError: libcudart.so.13: cannot open shared object file`. Pointing pip at a

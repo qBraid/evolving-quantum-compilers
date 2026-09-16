@@ -61,9 +61,20 @@ from qbraid_core.services.compute.client import ComputeClient
 # is resolved while leaving vllm's own binary built for CUDA 13, which is a worse
 # failure. The version of vllm is the thing that has to match the driver:
 #
-#   vllm >= 0.20   torch 2.11+   CUDA 13    driver >= 580
-#   vllm 0.17-0.19 torch 2.10.0  CUDA 12.8  driver >= 570
-#   vllm 0.14-0.16 torch 2.9.1   CUDA 12.8  driver >= 570
+#   vllm >= 0.20     torch 2.11+   CUDA 13    driver >= 580
+#   vllm 0.14-0.19   torch 2.9-2.10 CUDA 12.x  driver >= 525
+#
+# The boundary is the CUDA MAJOR version, not the minor one. CUDA minor version
+# compatibility means a 12.8 runtime runs on any driver that supports 12.0
+# (>= 525), so every CUDA 12.x vllm works across the whole 12.x driver range.
+# Crossing 12 -> 13 has no such bridge and genuinely needs >= 580.
+#
+# Measured on qBraid, and the reason this is resolved at runtime rather than
+# assumed: driver version does NOT track GPU generation.
+#
+#   gpu-h100-sxm  driver 550.163.01  (CUDA 12.4)  <- newest GPU, oldest driver
+#   gpu-a10       driver 570.148.08  (CUDA 12.8)
+#   gpu-l4        older still
 #
 # "auto" resolves this from the driver at launch. Override with --vllm-spec.
 DEFAULT_VLLM_SPEC = "auto"
@@ -71,7 +82,7 @@ DEFAULT_VLLM_SPEC = "auto"
 # (minimum driver major, vllm pip spec), newest first.
 DRIVER_TO_VLLM = (
     (580, "vllm"),
-    (570, "vllm==0.19.1"),
+    (525, "vllm==0.19.1"),
     (0, "vllm==0.19.1"),
 )
 
@@ -298,8 +309,8 @@ class RemoteGPUEndpoint:
         for minimum, spec in DRIVER_TO_VLLM:
             if major >= minimum:
                 _log(f"driver {raw} -> {spec}")
-                if major < 570:
-                    _log("WARNING: driver is older than any vllm we know works here")
+                if major < 525:
+                    _log("WARNING: driver predates CUDA 12; no known-good vllm")
                 return spec
         return "vllm==0.19.1"
 

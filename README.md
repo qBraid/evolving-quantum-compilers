@@ -182,8 +182,15 @@ which needs driver **≥ 580**, so on those images it dies at import with either
 | vLLM | torch | CUDA runtime | needs driver |
 |---|---|---|---|
 | ≥ 0.20 | 2.11+ | 13 | ≥ 580 |
-| 0.17 – 0.19 | 2.10.0 | 12.8 | ≥ 570 |
-| 0.14 – 0.16 | 2.9.1 | 12.8 | ≥ 570 |
+| 0.14 – 0.19 | 2.9 – 2.10 | 12.x | ≥ 525 |
+
+The boundary is the CUDA **major** version. Minor version compatibility means a
+12.8 runtime runs on any driver supporting 12.0, so every CUDA 12.x vLLM works
+across the whole 12.x driver range; crossing 12 → 13 has no such bridge.
+
+**Driver version does not track GPU generation on qBraid** — measured:
+`gpu-h100-sxm` 550.163.01, `gpu-a10` 570.148.08, `gpu-l4` older still. The
+newest GPU had the oldest driver, so check rather than assume.
 
 Check with `nvidia-smi --query-gpu=driver_version --format=csv,noheader` and
 install accordingly. Pointing pip at a `cu128` torch index does **not** help: it
