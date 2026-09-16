@@ -90,6 +90,12 @@ LOCAL_PORT = 8000
 # A 14B model at bf16 needs ~28GB and fits on one 80GB H100 with room to spare,
 # so TP is only worth raising for a model that genuinely does not fit on a
 # single card -- and then the shared-memory limit has to be dealt with first.
+#
+# CUDA graph capture is likewise disabled by default. These instances do not
+# permit it -- vLLM dies during capture with
+#   torch.AcceleratorError: CUDA error: operation not permitted (cudaErrorNotPermitted)
+# from vllm/compilation/cuda_graph.py. --enforce-eager skips capture; it costs
+# some decode throughput and is the difference between a server and no server.
 
 # Substrings that mean the server is never coming up. Checked against the tail of
 # vllm.log so a dead server aborts in ~30s rather than burning the full timeout.
@@ -106,6 +112,8 @@ FATAL_LOG_MARKERS = (
     "does not appear to have a file named",
     "Repository Not Found",
     "address already in use",
+    "operation not permitted",
+    "cudaErrorNotPermitted",
 )
 
 
@@ -136,6 +144,7 @@ class RemoteGPUEndpoint:
         keep_alive: bool = False,
         vllm_spec: str = DEFAULT_VLLM_SPEC,
         tensor_parallel: int = 1,
+        enforce_eager: bool = True,
     ) -> None:
         self.profile = profile
         self.model = model
@@ -146,6 +155,7 @@ class RemoteGPUEndpoint:
         self.keep_alive = keep_alive
         self.vllm_spec = vllm_spec
         self.tensor_parallel = tensor_parallel
+        self.enforce_eager = enforce_eager
 
         self.client = ComputeClient()
         self.instance_id: Optional[str] = None
@@ -313,6 +323,7 @@ class RemoteGPUEndpoint:
             f"nohup {interpreter} -m vllm.entrypoints.openai.api_server "
             f"--model {shlex.quote(self.model)} --port {REMOTE_PORT} "
             f"--tensor-parallel-size {self.tensor_parallel} "
+            f"{'--enforce-eager ' if self.enforce_eager else ''}"
             f"> /tmp/vllm.log 2>&1 & echo $! > /tmp/vllm.pid; cat /tmp/vllm.pid"
         )
         started = self._ssh(remote_cmd, timeout=180)
@@ -453,6 +464,11 @@ def main() -> int:
     parser.add_argument("--results-dir", default="results/remote_gpu")
     parser.add_argument("--max-session-minutes", type=int, default=120)
     parser.add_argument(
+        "--cuda-graphs", action="store_true",
+        help="Allow CUDA graph capture. Off by default: these instances do not "
+             "permit it and vLLM dies during capture.",
+    )
+    parser.add_argument(
         "--tensor-parallel", type=int, default=1,
         help="GPUs to shard the model across. Leave at 1 unless the model does "
              "not fit on one card; TP>1 needs more /dev/shm than these images have.",
@@ -483,6 +499,7 @@ def main() -> int:
         local_port=args.local_port,
         keep_alive=args.keep_alive,
         tensor_parallel=args.tensor_parallel,
+        enforce_eager=not args.cuda_graphs,
         vllm_spec=args.vllm_spec,
     )
 
