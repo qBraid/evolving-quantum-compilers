@@ -202,4 +202,74 @@ unparseable diffs. **Terminate when done** (`qbraid compute instances terminate
 <label> --yes`); stopped instances still bill storage. Copy `results/` off the
 instance first — on-demand filesystems are deleted on terminate.
 
+### Serving vLLM on a qBraid GPU — four things that are not obvious
+
+Each of these fails in a way that does not look like its cause. `qbraid_remote_gpu.py`
+handles all four; this is what it is doing and why.
+
+**1. Match the vLLM version to the driver.** vLLM's compiled extension links a
+specific CUDA runtime, and the driver — which lives on the host and cannot be
+changed from inside a container — sets the ceiling. Check first:
+
+```bash
+nvidia-smi --query-gpu=driver_version --format=csv,noheader
+```
+
+| driver | install |
+|---|---|
+| ≥ 580 | `pip install vllm` (CUDA 13) |
+| 570–579 | `pip install "vllm==0.19.1"` (torch 2.10, CUDA 12.8) |
+
+Symptoms of a mismatch: `The NVIDIA driver on your system is too old`, or
+`ImportError: libcudart.so.13: cannot open shared object file`. Pointing pip at a
+`cu128` torch index does **not** fix it — that changes which torch resolves while
+leaving vLLM's own binary on CUDA 13, which fails more confusingly.
+
+**2. `--tensor-parallel-size 1`** unless the model genuinely does not fit on one
+card. With TP>1 vLLM shards across workers that talk over `/dev/shm`, which is too
+small on these images. It does not error — it logs
+`shm_broadcast.py: No available shared memory` forever and never becomes ready,
+which is indistinguishable from a slow model load. A 14B at bf16 needs ~28GB and
+fits on one 80GB card, so TP buys nothing there.
+
+**3. `--enforce-eager`.** CUDA graph capture is not permitted in these containers;
+without it vLLM dies with
+`torch.AcceleratorError: CUDA error: operation not permitted (cudaErrorNotPermitted)`.
+
+**4. Install into a venv and call that interpreter explicitly.** System Python is
+PEP 668 managed, so a bare `pip install` fails and a bare `python -m vllm...`
+resolves to an interpreter without vLLM.
+
+### Capacity: always give a fallback list
+
+`qbraid compute instances availability` is a hint, not a guarantee — profiles
+reporting **High** routinely sit in `provisioning` past any sane timeout, and one
+that just failed can succeed ten minutes later. Give several profiles in
+preference order, bound the wait, terminate the stuck instance, and move on:
+
+```bash
+python qbraid_remote_gpu.py --profile "gpu-h100-2x,gpu-h100-sxm,gpu-a10" \
+    --provision-timeout 540
+```
+
+Do not fail a run on one unlucky profile.
+
+### Agents on a fresh GPU instance
+
+If you launch exploration agents on the box alongside the search:
+
+- Check the destination first — `ssh <alias> 'qbraid agents readiness --tool claude
+  --approval auto --verify-auth --json'`. It reports `credentialTransfer: false`:
+  credentials are never copied to a remote instance.
+- If it is not ready, `ssh <alias> 'qbraid ai connect claude'` routes that machine
+  through the qBraid AI gateway using its own access token, so no secret travels.
+- **A never-used instance opens Claude Code's first-run wizard** (theme picker,
+  then a trust prompt). The agent launches, reports "up", and sits at a TUI prompt
+  — `--instructions` never arrive, and `readiness` does not currently catch it.
+  Confirm with `qbraid agents read <id>` before assuming an agent is working.
+- `qbraid agents list` is **host-local**: agents launched on a GPU box do not
+  appear in the list on your pod. SSH there and ask.
+- Tell agents which interpreter to use. They will otherwise use system Python and
+  hit `ModuleNotFoundError` for everything you installed in a venv.
+
 **Match the vLLM version to the driver.** Current vLLM links `libcudart.so.13` (CUDA 13) and needs driver >= 580; several qBraid GPU images are older (an A10 measured 570.148.08), where `vllm==0.19.1` (torch 2.10, CUDA 12.8) is the newest that works. Check with `nvidia-smi --query-gpu=driver_version --format=csv,noheader`. `qbraid_remote_gpu.py` resolves this automatically.
