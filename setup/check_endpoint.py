@@ -5,7 +5,7 @@
 
     # a server you started yourself
     python setup/check_endpoint.py --base-url http://localhost:8000/v1 \
-                                   --model Qwen/Qwen2.5-Coder-14B-Instruct
+                                   --model Qwen/Qwen3.5-9B
 
 Checks, in order: the endpoint is reachable, the model name is actually served,
 a completion round-trips, and -- for the gateway -- that you have quota left.

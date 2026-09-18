@@ -74,7 +74,7 @@ pip install "vllm==0.19.1"        # match the driver, see below
 bash setup/serve_vllm.sh                      # or setup/serve_sglang.sh
 python setup/check_endpoint.py --base-url http://localhost:8000/v1 --model <model>
 python run_evolution.py --endpoint local --base-url http://localhost:8000/v1 \
-    --model Qwen/Qwen2.5-Coder-14B-Instruct --generations 100
+    --model Qwen/Qwen3.5-9B --generations 100
 ```
 
 Model size matters more than expected: below ~14B the run stalls on unparseable

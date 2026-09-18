@@ -194,7 +194,7 @@ Free inference, so run far longer (100+ generations).
 qbraid compute up <profile>          # then, on the instance:
 pip install "vllm==0.19.1" && bash setup/serve_vllm.sh
 python run_evolution.py --endpoint local --base-url http://localhost:8000/v1 \
-    --model Qwen/Qwen2.5-Coder-14B-Instruct --generations 100
+    --model Qwen/Qwen3.5-9B --generations 100
 ```
 
 Any OpenAI-compatible endpoint works. Use ≥14B — smaller models stall on

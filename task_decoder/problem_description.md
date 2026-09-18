@@ -31,7 +31,10 @@ Z detector, hook errors from the syndrome circuit correlate neighbouring
 detectors — and plain MWPM decodes as if they were independent. Decoders that
 exploit those correlations do measurably better. Belief-matching (belief
 propagation over the error model, used to reweight the matching graph for each
-individual shot, then matching) reaches **1.55x** on this panel (1.52x, 1.48x and 1.65x on the three instances).
+individual shot, then matching) reaches about **1.5x** on this panel — measured
+1.52x on `surface-d5-p005` and 1.48x on `surface-d5-p008`. It is also far too
+slow to use as a submission: it takes minutes per instance, well past the time
+limit. Matching its accuracy cheaply is the problem.
 
 The practical consequence: **a purely static reweighting cannot help.** Scaling
 or reshaping `ctx.default_weights` once, the same way for every shot, only
@@ -52,11 +55,13 @@ You never see the observables. You cannot compute your own score.
 ## Hard requirements
 
 - Right shape, right dtype, values in {0, 1}.
-- Deterministic: the evaluator decodes twice on identical inputs and rejects the
-  candidate if the answers differ.
-- No filesystem, no network, no importing the evaluator or the benchmarks.
-- The whole panel must decode within 600 seconds. For scale, full
-  belief-matching needs about 320s of that, so a correlated decoder is
-  affordable but a careless one is not. A per-shot Python loop over
-  20000 shots is usually too slow unless it does very little — vectorise, or
-  reserve the expensive path for the minority of shots that need it.
+- Deterministic: the evaluator decodes twice, in two separate processes, and
+  rejects the candidate if the answers differ. Memoising the first answer does
+  not help — the second process starts fresh.
+- No filesystem, no network, no importing the evaluator or the benchmarks. You
+  run in a subprocess that cannot import them, and a score implausibly far above
+  plain MWPM (>3x) is rejected rather than accepted.
+- The whole panel must decode within 240 seconds. Plain MWPM does all three
+  instances in about 0.2s, so there is a lot of room — but a per-shot Python
+  loop over 20000 shots will still blow through it. Vectorise, or reserve the
+  expensive path for the minority of shots that need it.

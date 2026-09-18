@@ -154,11 +154,11 @@ bash setup/serve_vllm.sh                      # or: bash setup/serve_sglang.sh
 # terminal 2 — confirm it is up, then evolve
 python setup/check_endpoint.py \
     --base-url http://localhost:8000/v1 \
-    --model Qwen/Qwen2.5-Coder-14B-Instruct
+    --model Qwen/Qwen3.5-9B
 
 python run_evolution.py --endpoint local \
     --base-url http://localhost:8000/v1 \
-    --model Qwen/Qwen2.5-Coder-14B-Instruct
+    --model Qwen/Qwen3.5-9B
 ```
 
 Inference is free once the GPU is running, so this config runs 100 generations
@@ -210,7 +210,7 @@ back to `localhost`, and **terminated for you**.
 
 ```bash
 python qbraid_remote_gpu.py --profile gpu-l40s \
-    --model Qwen/Qwen2.5-Coder-14B-Instruct --generations 40
+    --model Qwen/Qwen3.5-9B --generations 40
 ```
 
 Or from Python, where the same guarantee is a context manager:
@@ -218,7 +218,7 @@ Or from Python, where the same guarantee is a context manager:
 ```python
 from qbraid_remote_gpu import RemoteGPUEndpoint
 
-with RemoteGPUEndpoint(profile="gpu-l40s", model="Qwen/Qwen2.5-Coder-14B-Instruct") as gpu:
+with RemoteGPUEndpoint(profile="gpu-l40s", model="Qwen/Qwen3.5-9B") as gpu:
     ...  # gpu.base_url is a local URL
 # the instance is gone here, including if the block raised
 ```
@@ -228,10 +228,10 @@ See [`notebooks/03_remote_gpu.ipynb`](notebooks/03_remote_gpu.ipynb).
 The vLLM version is chosen from the instance's driver automatically, so this
 path works across images with different drivers. Verified on `gpu-a10`
 (driver 570.148.08): the module installed `vllm==0.19.1`, served
-`Qwen2.5-Coder-7B-Instruct`, tunnelled it back, ran the search and terminated
-the instance. With a 7B model only 3 of 10 candidates scored — which is the
-under-14B diff-protocol failure `docs/CHOOSING_A_MODEL.md` describes, not a
-problem with the endpoint. Use a 14B or larger for real runs.
+`Qwen3.5-4B`, tunnelled it back, ran the search and terminated
+the instance. Only 3 of 10 candidates scored at that size — which is the
+small-model diff-protocol failure `docs/CHOOSING_A_MODEL.md` describes, not a
+problem with the endpoint. Use `Qwen/Qwen3.5-9B` or larger for real runs.
 
 ### How the GPU is stopped from outliving you
 
